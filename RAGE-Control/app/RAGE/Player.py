@@ -5,8 +5,12 @@ from PlayerGun import *
 from math import pi
 from HXMReceiver import *
 from Sounds import *
+from HXMReceiver import *
 
-mainDir = os.path.split(os.path.abspath(__file__))[0]
+if 'RESOURCEPATH' in os.environ:
+	_mainDir = os.environ['RESOURCEPATH']
+else:
+	_mainDir = os.path.split(os.path.abspath(__file__))[0]
 sizeX = 50
 sizeY = 50
 difficulty = -1
@@ -14,24 +18,30 @@ maxBullets = 5
 black = (0,0,0)
 red = (255,0,0)
 white = (255,255,255,255)
+yellow = (254, 250, 15)
 green = (0,255,0)
 blue = (0,0,255)
 maxCountdownTime = 5
+_defaultFont = os.path.join(_mainDir, 'fonts', 'sourcecodepro.ttf')
+_headerFont = os.path.join(_mainDir, 'fonts', 'fugaz.ttf')
 
 class Player (Sprite):
 	
-	def __init__ (self, containers, screen, hxm=None, threshold=70, playerList=None, sound_on=True):
+	def __init__ (self, containers, screen, hxm=None, threshold=70, playerList=None, playerNum=0, sound_on=True):
 		Sprite.__init__(self, containers, screen, imageFile='goodguy2.png', size=(sizeX,sizeY), wobble=0.)
-		self._x = numpy.array([0., float(self._bounds[1])-10])
+		self._x = numpy.array([0., float(self._bounds[1])-60])
 		self._v = numpy.array([0.,0.])
 		self._bulletOffset = numpy.array([float(sizeX)/2., 0.])
+		self.playerNum = playerNum
 		self.bulletGroup = pygame.sprite.Group()
 		self.bullets = []
 		self.score = 0
+		self.thresholdScore = 0
+		self.totalThresholdScore = 0.
 		self.hxm = hxm
-		self.fontSmall = pygame.font.SysFont('Helvetica', 12)
-		self.fontLarge = pygame.font.SysFont('Helvetica', 38, bold=True)
-		self.hrTextLabel = self.fontSmall.render('HR',True,black)
+		self.fontSmall = pygame.font.SysFont(_defaultFont, 18)
+		self.fontLarge = pygame.font.SysFont(_defaultFont, 40, bold=True)
+		self.hrTextLabel = self.fontSmall.render('HR',True,white)
 		self.countdownMode = False
 		self.countdownOver = False
 		self.countdownClockOutline = pygame.Surface((7,52))
@@ -45,7 +55,12 @@ class Player (Sprite):
 		self.stressed = False
 		self.playerList = playerList
 		self.sound_on = sound_on
-			
+		self.isSuperPlayer = False
+		self.asteroidsHit = 0
+		self.friendsHit = 0
+		self.bossesHit = 0
+		self.hitsTaken = 0
+
 	def accel (self, a):
 		self._a = numpy.array(a)*5
 	
@@ -70,14 +85,25 @@ class Player (Sprite):
 		Sprite.draw(self)
 		hrTextLabelPos = self._x + numpy.array([60.,0.])
 		hrTextPos = self._x + numpy.array([60.,14.])
-		self.hrText = self.fontLarge.render(("%.0f"%round(self.hxm.HR,0)),True,black)
+		self.hrText = self.fontLarge.render(("%.0f"%round(self.hxm.HR,0)),True,white)
 		self._screen.blit(self.hrTextLabel, (hrTextPos[0], hrTextLabelPos[1]))
 		self._screen.blit(self.hrText, (hrTextPos[0], hrTextPos[1]))
 		for bullet in self.bullets:
 			bullet.draw()
 		self.drawCountdownTimer()
 		self.drawColor()
-	
+
+	def drawHr (self, index):
+		hrTextLabelPos = numpy.array([60.,560.])
+		if index == 0:
+			hrTextPos = numpy.array([200.,570.])
+		else:
+			hrTextPos = numpy.array([645.,570.])
+		self.hrText = self.fontLarge.render(("%.0f"%round(self.hxm.HR,0)),True,white)
+		self._screen.blit(self.hrTextLabel, (hrTextPos[0], hrTextLabelPos[1]))
+		self._screen.blit(self.hrText, (hrTextPos[0], hrTextPos[1]))
+		self.drawColor(hrTextPos[0])
+
 	def move (self):
 		Sprite.move(self)
 		for bullet in self.bullets:
@@ -100,7 +126,18 @@ class Player (Sprite):
 		if (self.stressed) and ((self.hxm.HR-self.threshold) < 0):
 			self.playerList.tellEveryoneImBetter(self)
 			self.stressed = False
-			
+
+	def wipeThresholdScore(self):
+		if self.thresholdScore > 0:
+			self.thresholdScore = 0
+			if self.sound_on:
+				Sounds().PowerDown()
+	
+	def changeThresholdScore(self, increment):
+		self.thresholdScore += increment
+
+	def changeTotalThresholdScore(self, increment):
+		self.totalThresholdScore += increment
 	
 	def changeScore(self, increment):
 		self.score += increment
@@ -125,12 +162,15 @@ class Player (Sprite):
 			pygame.draw.rect(self.countdownClockSurface, red, (0,endHeight*(1-countdownPct),5,endHeight))
 			self._screen.blit(self.countdownClockSurface, (self._x[0]-25, self._x[1]))
 
-	def drawColor(self):
+	def drawColor(self, hrTextPosX=None):
 		if self.hxm.color == 'Blue':
 			self.color = blue
 		elif self.hxm.color == 'Green':
 			self.color = green
 		else:
-			self.color = white
+			self.color = yellow
 		self.colorSurface.fill(self.color)
-		self._screen.blit(self.colorSurface, (self._x[0], self._x[1]+sizeY))
+		if (hrTextPosX is not None):
+			self._screen.blit(self.colorSurface, (hrTextPosX, 590.))
+		else:
+			self._screen.blit(self.colorSurface, (self._x[0], self._x[1]+sizeY))

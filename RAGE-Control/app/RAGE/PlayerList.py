@@ -1,22 +1,47 @@
-import Player, pygame, time, datetime
+import Player, SuperPlayer, pygame, time, datetime, os
 from HXMReceiver import *
+
+t = datetime.datetime.fromtimestamp(time.time())
+d = t.strftime('%Y-%m-%d')
+_logDir = os.path.join(os.path.expanduser('~'),'Documents','CALMS-gameplay-logs/{0}/'.format(d))
 
 class PlayerList:
 	
 	def __init__ (self, containers, screen, players=1, thresholds=(70,70), sound_on=True):
 		self._screen = screen
+		self._containers = containers
+		self._soundOn = sound_on
+		self.superPlayerActive = False
 		self.hxm = HXMReceiver(minDevices=players)
 		self.hxm.run()
 		self.players = []
 		self.stressedPlayers = []
+		self.maxThresholdScore = 0
+		self.totalScore()
 		for p in range(players):
-			self.players.append(Player.Player(containers, screen, self.hxm.devices[p], thresholds[p], self, sound_on))
-		t = datetime.datetime.fromtimestamp(time.time())
-		self.outfile = './Log/Log ' + t.strftime('%Y-%m-%d %H.%M.%S') + '.csv'
+			self.players.append(Player.Player(containers, screen, self.hxm.devices[p], thresholds[p], self, p, sound_on))
+		self.outfile = _logDir + t.strftime('%Y-%m-%d %H.%M.%S') + '.csv'
 		f = open(self.outfile, 'w')
 		f.write('Start time: {0}, Players: {1}\n'.format(time.time(), players))
 		f.close()
-	
+
+	def totalScore(self):
+		total = 0
+		for player in self.players:
+			total += player.score
+		return total
+
+	def changeMaxThresholdScore(self, increment):
+		self.maxThresholdScore += increment
+
+	def activateSuperPlayer(self, x):
+		self.superPlayerActive = True
+		self.players.append(SuperPlayer.SuperPlayer(self._containers, self._screen, self, self._soundOn, x=x))
+
+	def deactivateSuperPlayer(self):
+		self.superPlayerActive = False
+		self.players.pop()
+
 	def __getitem__(self, key):
 		return self.players[key]
 
@@ -25,19 +50,25 @@ class PlayerList:
 			self.players[player].accel(a)
 	
 	def fire(self, player):
-		self.players[player].fire()
+		if (((player == 2) and (len(self.players) == 3)) or (player < 2)):
+			self.players[player].fire()	
 	
 	def move(self):
 		for player in self.players:
 			player.move()
 			if (len(self.stressedPlayers) > 0):
-				player.startCountdown()
+					player.startCountdown()
 			else:
-				player.stopCountdown()
+					player.stopCountdown()
 	
 	def draw(self):
-		for player in self.players:
-			player.draw()
+			for index, player in enumerate(self.players):
+				if (player.isSuperPlayer and self.superPlayerActive):
+					player.draw()
+				elif ((not player.isSuperPlayer) and (self.superPlayerActive)):
+					player.drawHr(index)
+				elif ((not player.isSuperPlayer) and (not self.superPlayerActive)):
+					player.draw()
 			
 	def playerBullets(self):
 		bullets = []
@@ -58,7 +89,7 @@ class PlayerList:
 
 	def close (self):
 		f = open(self.outfile, 'a')
-		f.write('End time: {0}, Score: {1}\n'.format(time.time(), self.players[0].score))
+		f.write('End time: {0}, Score: {1}\n'.format(time.time(), self.totalScore()))
 		f.write(self.hxm.log())
 		f.close()
 		self.__del__()
